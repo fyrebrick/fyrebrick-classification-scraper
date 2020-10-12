@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: there is no test yet specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +13,5 @@
     "cheerio": "^1.0.0-rc.3",
     "node-schedule": "^1.3.2",
     "superagent": "^6.1.0"
-  },
-  "devDependencies": {
-    "request": "^2.88.2",
-    "request-promise": "^4.2.6"
   }
 }
