@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: there is no test yet specified\" && exit 1"
+    "test": "echo \"Error: there is no test yet specified\" && exit 1",
+    "docker": "docker build -t snakehead007/brickscraper:latest . && docker push snakehead007/brickscraper:latest",
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
