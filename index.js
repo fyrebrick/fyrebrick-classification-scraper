@@ -1,5 +1,3 @@
-"use strict"
-
 let schedule = require('node-schedule');
 const rp = require('request-promise');
 const cheerio = require('cheerio');
@@ -11,23 +9,36 @@ let every_day_once = '50 23 * * *';
 let every_hour_once = '0 * * * *';
 let every_ten_minutes = '*/10 * * * *';
 let every_5_minutes = '*/5 * * * *';
+let IP = "images";
 
-
+let links;
 let scrape_cron = every_5_minutes;
-console.log("ready to start scraping, scraping at "+scrape_cron);
-schedule.scheduleJob(scrape_cron,async()=>{
+console.log('starting up!');
+
+console.log("ready to start scraping...");
+sleep(30*1000).then(async()=>{
+    links = [];
         try{
+            console.log("checking if match server is online..");
+            await superagent
+                .get('http://'+IP+':8888/count')
+                .set('accept', 'json')
+                .end((err,res) => {
+                    if(err){
+                        console.log(err);
+                        console.log("cannot connect to match server, stopping.");
+                        process.exit();
+                    }
+                    console.log(res.text);
+                    console.log("match server is online, continuing");
+                });
             console.log('start scraping...');
-            let val = doScrape(1*1000);
-            if(val){
-                console.log('scraping should be done successfully');
-            }else{
-                console.log('scraping gave an error');
-            }
+            await doScrape(20*1000);
         }catch(err){
             console.log(err);
         }
 });
+
 function login(callback){
         superagent
             .post('https://www.bricklink.com/ajax/renovate/loginandout.ajax')
@@ -45,6 +56,7 @@ function login(callback){
             });
     }
 function sleep(ms) {
+    console.log("sleeping for "+ms+"ms");
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 function checkForQuotaLimit(cheerioLoad){
@@ -58,65 +70,68 @@ function checkForQuotaLimit(cheerioLoad){
 function doScrape(slowdown){
     let base_uri = "https://www.bricklink.com";
     //let slowdown = 5000; //slowdown timer with each request;
-    login((err, res) => {
-        sleep(slowdown);
+    login(async(err, res) => {
+        await sleep(slowdown);
+        console.log("starting login");
         if(JSON.parse(res.text).returnCode===3){
             console.trace(Error("login gave error: "+JSON.parse(res.text).returnMessage));
         }else{
             console.log('log in successful');
         }
-        sleep(slowdown);
+        console.log("starting checkpages, in timeout");
         setTimeout(checkPages,slowdown,slowdown);
     });
 }
 
 function checkPages(slowdown){
-    rp("https://www.bricklink.com/catalogList.asp?pg=8&catString=238&catType=P").then((html) => {
-        console.log('checking amount of pages...');
-        sleep(slowdown);
+    rp("https://www.bricklink.com/catalogList.asp?pg=8&catString=238&catType=P").then(async (html) => {
+        console.log("check pages..");
         let $ = cheerio.load(html);
         if(checkForQuotaLimit($)){
             return false;
         }
+        console.log('checking amount of pages...');
         let pages = Number($('div.catalog-list__pagination--top div:nth-child(2) b:nth-child(3)').text());
         console.log("pages found: "+pages+", iterating all pages...");
-        sleep(slowdown);
         for (let i = 1; i <= pages; i++) {
-            setTimeout(doPage,slowdown,i,pages);
+            await setTimeout(await doPage,slowdown,i,pages);
+            await sleep(slowdown);
         }
     })
 }
 
 function doPage(i,pages){
-    let links = [];
-    rp("https://www.bricklink.com/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then((page) => {
+    rp("https://www.bricklink.com/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then(async(page) => {
         let $ = cheerio.load(page);
-        if(checkForQuotaLimit($)){
+        if (checkForQuotaLimit($)) {
             return false;
         }
+        console.log("doing page " + i);
         let list_links = $('table.catalog-list__body-main tbody tr td:nth-child(2) a');
+        console.log(links.length + " links on page " + i);
         for (let j = 0; j < list_links.length; j++) {
-            links.push(list_links[j].attribs.href);
-        }
-        console.log(links.length+" items on page "+i);
-        if(i === pages){
-            //last page is completed, running all colors of each link
-            links.forEach((link)=>{
-                let regex_id = /P=(.+)/gm;
-                let id = link.match(regex_id)[0].substr(2);
-                console.log(link);
-                console.log('item '+id+' on page '+i);
-                let body = {url:"http://img.bricklink.com/ItemImage/PL/"+id+".png",filepath:"P="+id};
-                console.log("making request with body: "+JSON.stringify(body));
-                superagent
-                    .post('http://match_match_1:8888/add')
-                    .set('accept', 'json')
-                    .send(body).then((res)=>{
-                    console.log("done....."+id);
-                })
-                    .catch((err)=>{
+            let link = list_links[j].attribs.href;
+            let regex_id = /P=(.+)/gm;
+            let id = link.match(regex_id)[0].substr(2);
+            console.log(link);
+            console.log('item ' + id + ' on page ' + i);
+            await superagent
+                .post('http://'+IP+':8888/add')
+                .set('Content-Type', 'multipart/form-data')
+                .field('url', "http://img.bricklink.com/ItemImage/PL/" + id + ".png")
+                .field('filepath',"P=" + id)
+                .end((err,res) => {
+                    if(err){
                         console.log(err.message);
-                    });
+                    }
+                    console.log(res.text);
+                console.log("done " +i+"/"+list_links.length);
+            });
+
+            await sleep(5000);
+        }
+    });
+            //last page is completed, running all colors of each link
                 /*
                 rp(base_uri+link).then((html_2)=>{
                     let $ = cheerio.load(html_2);
@@ -142,8 +157,6 @@ function doPage(i,pages){
                 })
                 */
 
-            })
-        }
-    })
+
 }
 
