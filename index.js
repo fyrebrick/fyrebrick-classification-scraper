@@ -1,30 +1,34 @@
 let schedule = require('node-schedule');
-const rp = require('request-promise');
 const cheerio = require('cheerio');
 const superagent = require('superagent');
+//const smartcrop = require('smartcrop');
+const fs = require('fs');
 
-
-let every_minute = '* * * * * ';
+//let every_minute = '* * * * * ';
 let every_day_once = '50 23 * * *';
-let every_hour_once = '0 * * * *';
-let every_ten_minutes = '*/10 * * * *';
-let every_5_minutes = '*/5 * * * *';
+//let every_hour_once = '0 * * * *';
+//let every_ten_minutes = '*/10 * * * *';
+//let every_5_minutes = '*/5 * * * *';
 let IP = "images";
 
 let links;
-let scrape_cron = every_5_minutes;
+//let scrape_cron = every_5_minutes;
 console.log('starting up!');
 
 console.log("ready to start scraping...");
-sleep(30*1000).then(async()=>{
-    links = [];
-        try{
+schedule.scheduleJob(every_day_once, function(){
+    startUp();
+});
+function startUp() {
+    sleep(200 * 1000).then(async () => {
+        links = [];
+        try {
             console.log("checking if match server is online..");
             await superagent
-                .get('http://'+IP+':8888/count')
+                .get('http://' + IP + ':8888/count')
                 .set('accept', 'json')
-                .end((err,res) => {
-                    if(err){
+                .end((err, res) => {
+                    if (err) {
                         console.log(err);
                         console.log("cannot connect to match server, stopping.");
                         process.exit();
@@ -33,12 +37,12 @@ sleep(30*1000).then(async()=>{
                     console.log("match server is online, continuing");
                 });
             console.log('start scraping...');
-            await doScrape(20*1000);
-        }catch(err){
+            await doScrape(20 * 1000);
+        } catch (err) {
             console.log(err);
         }
-});
-
+    });
+}
 function login(callback){
         superagent
             .post('https://www.bricklink.com/ajax/renovate/loginandout.ajax')
@@ -84,7 +88,8 @@ function doScrape(slowdown){
 }
 
 function checkPages(slowdown){
-    rp("https://www.bricklink.com/catalogList.asp?pg=8&catString=238&catType=P").then(async (html) => {
+    superagent.get("https://www.bricklink.com/catalogList.asp?pg=8&catString=238&catType=P").then(async (res) => {
+        let html = res.body;
         console.log("check pages..");
         let $ = cheerio.load(html);
         if(checkForQuotaLimit($)){
@@ -100,8 +105,27 @@ function checkPages(slowdown){
     })
 }
 
+//removes the background of an image and returns the filepath of the new image
+function rembg(url,id,filetype){
+    //upload picture to rembg-docker
+    superagent
+        .get("http://rembg:5000")
+        .query({ url: url })
+        .end(async (err,res)=>{
+            if(err){
+                console.trace(err);
+            }
+            let buffer = new Buffer.from(res.body);
+            let path = '_temp/'+id+'.'+filetype;
+            // write the contents of the buffer, from position 0 to the end, to the file descriptor returned in opening our file
+            await fs.writeFileSync(path, buffer, {flag:'w'});
+                return path;
+            });
+}
+
 function doPage(i,pages){
-    rp("https://www.bricklink.com/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then(async(page) => {
+    superagent.get("https://www.bricklink.com/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then(async(res) => {
+        let page = res.body;
         let $ = cheerio.load(page);
         if (checkForQuotaLimit($)) {
             return false;
@@ -115,10 +139,11 @@ function doPage(i,pages){
             let id = link.match(regex_id)[0].substr(2);
             console.log(link);
             console.log('item ' + id + ' on page ' + i);
+            let path_image = await rembg("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png");
             await superagent
                 .post('http://'+IP+':8888/add')
                 .set('Content-Type', 'multipart/form-data')
-                .field('url', "http://img.bricklink.com/ItemImage/PL/" + id + ".png")
+                .attach('image', path_image)
                 .field('filepath',"P=" + id)
                 .end((err,res) => {
                     if(err){
@@ -131,32 +156,6 @@ function doPage(i,pages){
             await sleep(5000);
         }
     });
-            //last page is completed, running all colors of each link
-                /*
-                rp(base_uri+link).then((html_2)=>{
-                    let $ = cheerio.load(html_2);
-                    checkForQuotaLimit($);
-                    let listofColor = $("table.pciColorInfoTable tbody tr td:first-child span a");
-                    for(let j = 0; j < listofColor.length;j++){
-                        const regex = /\d+/gm;
-                        const colorId = Number(String(listofColor[j].attribs.onclick).match(regex));
-                        let linkToColor = "https://www.bricklink.com/v2/catalog/catalogitem.page?P="+id+"1#T=S&C="+colorId+"&O={'color':'"+colorId+"','iconly':0}";
-                        rp(linkToColor).then((html_3)=>{
-                            let $ = cheerio.load(html_3);
-                            checkForQuotaLimit($);
-                            let rawLink = $("img.pciImageMain").text;
-                            console.log(rawLink);
-                            const regex_noImage = /no_image/gm;
-                            if(rawLink.match(regex_noImage).length===0){
-                                //has image
-                                    //upload image
-                            }
-
-                        })
-                    }
-                })
-                */
-
 
 }
 
