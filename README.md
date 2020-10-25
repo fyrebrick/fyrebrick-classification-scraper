@@ -2,7 +2,7 @@
 
 Scrapes all images for the image collection database and to keep it up to date.
 
-##### usage
+### usage
 
 only scrapes minifig heads currenlty.
 
