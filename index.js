@@ -9,23 +9,24 @@ let every_day_once = '50 23 * * *';
 //let every_hour_once = '0 * * * *';
 //let every_ten_minutes = '*/10 * * * *';
 //let every_5_minutes = '*/5 * * * *';
-let IP = "images";
-
+let match_ip = "http://match:8888/";
+let rembg_ip = "http://rembg:5000/";
 let links;
+let base_uri = "https://www.bricklink.com";
 //let scrape_cron = every_5_minutes;
 console.log('starting up!');
 
 console.log("ready to start scraping...");
-schedule.scheduleJob(every_day_once, function(){
+//schedule.scheduleJob(every, function(){
     startUp();
-});
+//});
 function startUp() {
     sleep(200 * 1000).then(async () => {
         links = [];
         try {
             console.log("checking if match server is online..");
             await superagent
-                .get('http://' + IP + ':8888/count')
+                .get(match_ip+"count")
                 .set('accept', 'json')
                 .end((err, res) => {
                     if (err) {
@@ -33,7 +34,7 @@ function startUp() {
                         console.log("cannot connect to match server, stopping.");
                         process.exit();
                     }
-                    console.log(res.text);
+                    //console.log(res.text);
                     console.log("match server is online, continuing");
                 });
             console.log('start scraping...');
@@ -72,24 +73,24 @@ function checkForQuotaLimit(cheerioLoad){
 }
 
 function doScrape(slowdown){
-    let base_uri = "https://www.bricklink.com";
     //let slowdown = 5000; //slowdown timer with each request;
     login(async(err, res) => {
-        await sleep(slowdown);
-        console.log("starting login");
-        if(JSON.parse(res.text).returnCode===3){
-            console.trace(Error("login gave error: "+JSON.parse(res.text).returnMessage));
-        }else{
-            console.log('log in successful');
+            await sleep(slowdown);
+            console.log("starting login");
+            if(JSON.parse(res.text).returnCode===3){
+                console.trace(Error("login gave error: "+JSON.parse(res.text).returnMessage));
+            }else{
+                console.log('log in successful');
+            }
+            console.log("starting checkpages...");
+            setTimeout(checkPages,slowdown,slowdown);
         }
-        console.log("starting checkpages, in timeout");
-        setTimeout(checkPages,slowdown,slowdown);
-    });
+    );
 }
 
 function checkPages(slowdown){
-    superagent.get("https://www.bricklink.com/catalogList.asp?pg=8&catString=238&catType=P").then(async (res) => {
-        let html = res.body;
+    superagent.get(base_uri+"/catalogList.asp?pg=1&catString=238&catType=P").then(async (res) => {
+        let html = res.text;
         console.log("check pages..");
         let $ = cheerio.load(html);
         if(checkForQuotaLimit($)){
@@ -97,7 +98,7 @@ function checkPages(slowdown){
         }
         console.log('checking amount of pages...');
         let pages = Number($('div.catalog-list__pagination--top div:nth-child(2) b:nth-child(3)').text());
-        console.log("pages found: "+pages+", iterating all pages...");
+        console.log("pages found: "+pages);
         for (let i = 1; i <= pages; i++) {
             await setTimeout(await doPage,slowdown,i,pages);
             await sleep(slowdown);
@@ -106,53 +107,64 @@ function checkPages(slowdown){
 }
 
 //removes the background of an image and returns the filepath of the new image
-function rembg(url,id,filetype){
+function rembg(url,id,filetype,callback){
     //upload picture to rembg-docker
+    console.log("sending image to rembg..");
     superagent
-        .get("http://rembg:5000")
+        .get(rembg_ip)
         .query({ url: url })
         .end(async (err,res)=>{
             if(err){
                 console.trace(err);
+                console.log("error while sending to rembg")
+            }else{
+                console.log("successfully removed background");
             }
             let buffer = new Buffer.from(res.body);
             let path = '_temp/'+id+'.'+filetype;
             // write the contents of the buffer, from position 0 to the end, to the file descriptor returned in opening our file
-            await fs.writeFileSync(path, buffer, {flag:'w'});
-                return path;
-            });
+            fs.writeFile(path, buffer, {flag:'w'}).then(()=>{
+                console.log("Successfully saved file on "+path);
+                callback(path);
+            })
+        });
+}
+
+async function upload(path_image){
+    console.log("Image: "+path_image);
+    console.log("posting image to match...");
+    await superagent
+        .post(match_ip+"add")
+        .set('Content-Type', 'multipart/form-data')
+        .attach('image', path_image)
+        .field('filepath',"P=" + id)
+        .end((err,res) => {
+            if(err){
+                console.log(err.message);
+            }else{
+                console.log("done " +i+"/"+list_links.length);
+            }
+            console.log(res.text);
+        });
 }
 
 function doPage(i,pages){
-    superagent.get("https://www.bricklink.com/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then(async(res) => {
-        let page = res.body;
+    superagent.get(base_uri+"/catalogList.asp?v=0&pg=" + i + "&catString=238&catType=P").then(async(res) => {
+        let page = res.text;
         let $ = cheerio.load(page);
         if (checkForQuotaLimit($)) {
             return false;
         }
         console.log("doing page " + i);
         let list_links = $('table.catalog-list__body-main tbody tr td:nth-child(2) a');
-        console.log(links.length + " links on page " + i);
+        console.log(list_links.length + " links on page " + i);
         for (let j = 0; j < list_links.length; j++) {
             let link = list_links[j].attribs.href;
             let regex_id = /P=(.+)/gm;
             let id = link.match(regex_id)[0].substr(2);
             console.log(link);
             console.log('item ' + id + ' on page ' + i);
-            let path_image = await rembg("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png");
-            await superagent
-                .post('http://'+IP+':8888/add')
-                .set('Content-Type', 'multipart/form-data')
-                .attach('image', path_image)
-                .field('filepath',"P=" + id)
-                .end((err,res) => {
-                    if(err){
-                        console.log(err.message);
-                    }
-                    console.log(res.text);
-                console.log("done " +i+"/"+list_links.length);
-            });
-
+             let path_image = await rembg("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png",upload);
             await sleep(5000);
         }
     });

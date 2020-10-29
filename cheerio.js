@@ -1,18 +1,19 @@
 const cheerio = require('cheerio');
-const rp = require('request-promise');
+const superagent = require('superagent');
 
-let linkToColor = "https://www.bricklink.com/v2/catalog/catalogitem.page?P=24581#T=S&C=90&O={%22color%22:90,%22iconly%22:0}";
-rp(linkToColor).then((html)=>{
+superagent.get("https://www.bricklink.com/catalogList.asp?pg=1&catString=238&catType=P").then(async (res) => {
+    console.log(res);
+    let html = res.text;
+    console.log("check pages..");
     let $ = cheerio.load(html);
-    console.log(html);
-    let rawLink = $("#_idImageMain");
-    //console.log(rawLink);
-    console.log(rawLink);
-    checkForQuotaLimit($);
-});
-
-function checkForQuotaLimit(cheerioLoad){
-    if(cheerioLoad("#blErrorTitle").text()){
-        console.trace(Error(cheerioLoad(".blErrorDetail pre").text()));
+    console.log('checking amount of pages...');
+    //console.log($('div.catalog-list__pagination--top div:nth-child(2) b:nth-child(3)').text());
+    //console.log(html)
+    let pages = Number($('div.catalog-list__pagination--top div:nth-child(2) b:nth-child(3)').text());
+    console.log("pages found: "+pages);
+    for (let i = 1; i <= pages; i++) {
+        await setTimeout(await doPage,slowdown,i,pages);
+        await sleep(slowdown);
     }
-}
+})
+
