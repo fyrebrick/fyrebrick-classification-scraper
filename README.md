@@ -2,10 +2,16 @@
 
 Scrapes all images for the image collection database and to keep it up to date.
 
-##### development
+### usage
 
-only scrapes the minifig heads currenlty 
+only scrapes minifig heads currenlty.
 
-##### usage
+Uses [snakehead007/match/docker-compose.yml](https://github.com/snakehead007/match/blob/master/docker-compose.yml) to run.
 
-this project will be used for my project to detect and recognise lego pictures. 
+This will run match, elasticsearch, rembg-docker and brickscraper.
+
+- brickscraper will scrape all the image urls
+- rembg-docker (docker wrapper for rembg) will remove the background of the images
+- match will upload the images finally
+
+This will be used to match and recognize lego pictures.
