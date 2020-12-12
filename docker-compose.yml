@@ -1,0 +1,14 @@
+version: '3.3'
+services:
+  brickscraper:
+    image: snakehead007/brickscraper
+    deploy:
+      replicas: 1
+  rembg:
+    image: snakehead007/rembg-docker:latest
+    ports:
+      - 5000:5000
+    deploy:
+      replicas: 1
+networks:
+  default:

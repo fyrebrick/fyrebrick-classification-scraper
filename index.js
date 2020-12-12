@@ -9,8 +9,8 @@ let every_day_once = '50 23 * * *';
 //let every_hour_once = '0 * * * *';
 //let every_ten_minutes = '*/10 * * * *';
 //let every_5_minutes = '*/5 * * * *';
-let match_ip = "http://match:8888/";
-let rembg_ip = "http://rembg:5000/";
+let match_ip = "http://match:8888/";    
+let rembg_ip = "http://localhost:5000/";
 let links;
 let base_uri = "https://www.bricklink.com";
 //let scrape_cron = every_5_minutes;
@@ -21,24 +21,24 @@ console.log("ready to start scraping...");
     startUp();
 //});
 function startUp() {
-    sleep(200 * 1000).then(async () => {
+    sleep(2/*00*/ * 1000).then(async () => {
         links = [];
         try {
-            console.log("checking if match server is online..");
-            await superagent
-                .get(match_ip+"count")
-                .set('accept', 'json')
-                .end((err, res) => {
-                    if (err) {
-                        console.log(err);
-                        console.log("cannot connect to match server, stopping.");
-                        process.exit();
-                    }
-                    //console.log(res.text);
-                    console.log("match server is online, continuing");
-                });
-            console.log('start scraping...');
-            await doScrape(20 * 1000);
+            // console.log("checking if match server is online..");
+            // await superagent
+            //     .get(match_ip+"count")
+            //     .set('accept', 'json')
+            //     .end((err, res) => {
+            //         if (err) {
+            //             console.log(err);
+            //             console.log("cannot connect to match server, stopping.");
+            //             process.exit();
+            //         }
+            //         //console.log(res.text);
+            //         console.log("match server is online, continuing");
+            //     });
+            // console.log('start scraping...');
+            await doScrape(2 * 1000);
         } catch (err) {
             console.log(err);
         }
@@ -61,7 +61,7 @@ function login(callback){
             });
     }
 function sleep(ms) {
-    console.log("sleeping for "+ms+"ms");
+    //console.log("sleeping for "+ms+"ms");
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 function checkForQuotaLimit(cheerioLoad){
@@ -107,26 +107,63 @@ function checkPages(slowdown){
 }
 
 //removes the background of an image and returns the filepath of the new image
-function rembg(url,id,filetype,callback){
+function save_raw(url,id,filetype,noCallBack=false){
+    superagent
+        .get(url)
+        .end(async (err,res)=>{
+            if(!res.body||err){
+                    if(!noCallBack){
+                    //console.trace(err);
+                    console.log("error while getting "+url+" "+id+"."+filetype,err.message);
+                    return save_raw("http://img.bricklink.com/ItemImage/PN/1/"+id+"."+filetype,id,filetype,true);
+                }
+            }
+            try{
+                let buffer = new Buffer.from(res.body);
+                let path = 'images/raw/'+id+'.'+filetype;
+                // write the contents of the buffer, from position 0 to the end, to the file descriptor returned in opening our file
+                fs.writeFile(path, buffer,()=>{
+                    console.log("successfully saved image in raw "+id+".png");
+                    //callback(path);
+                })
+            }catch(e){
+                if(!noCallBack){
+                    //console.trace(err);
+                    console.log("error while getting "+url+" "+id+"."+filetype,err.message);
+                    return save_raw("http://img.bricklink.com/ItemImage/PN/1/"+id+"."+filetype,id,filetype,true);
+                }
+            }
+            
+        });
+}
+function save_rembg(url,id,filetype,noCallBack=false){
     //upload picture to rembg-docker
-    console.log("sending image to rembg..");
     superagent
         .get(rembg_ip)
         .query({ url: url })
         .end(async (err,res)=>{
-            if(err){
-                console.trace(err);
-                console.log("error while sending to rembg")
-            }else{
-                console.log("successfully removed background");
+            if(!res.body||err){
+                if(!noCallBack){
+                console.log("error while sending "+url+" "+id+"."+filetype+" to rembg",err);
+                return save_rembg("http://img.bricklink.com/ItemImage/PN/"+id+"."+filetype,id,filetype,true);
+                }
             }
-            let buffer = new Buffer.from(res.body);
-            let path = '_temp/'+id+'.'+filetype;
+            try{
+                let buffer = new Buffer.from(res.body);
+                let path = 'images/rembg/'+id+'.'+filetype;
             // write the contents of the buffer, from position 0 to the end, to the file descriptor returned in opening our file
-            fs.writeFile(path, buffer, {flag:'w'}).then(()=>{
-                console.log("Successfully saved file on "+path);
-                callback(path);
+            fs.writeFile(path, buffer,()=>{
+                console.log("successfully removed background for "+id+".png");
+                //callback(path);
             })
+            }catch(e){
+                if(!noCallBack){
+                    //console.trace(err);
+                    console.log("error while getting "+url+" "+id+"."+filetype,err);
+                    return save_raw("http://img.bricklink.com/ItemImage/PN/1/"+id+"."+filetype,id,filetype,true);
+                }
+            }
+            
         });
 }
 
@@ -140,11 +177,11 @@ async function upload(path_image){
         .field('filepath',"P=" + id)
         .end((err,res) => {
             if(err){
-                console.log(err.message);
+                //console.log(err.message);
             }else{
-                console.log("done " +i+"/"+list_links.length);
+                //console.log("done " +i+"/"+list_links.length);
             }
-            console.log(res.text);
+            //console.log(res.text);
         });
 }
 
@@ -162,9 +199,24 @@ function doPage(i,pages){
             let link = list_links[j].attribs.href;
             let regex_id = /P=(.+)/gm;
             let id = link.match(regex_id)[0].substr(2);
-            console.log(link);
+            fs.access("./images/raw/"+ id + ".png", fs.F_OK, async (err) => {
+                if (err) {
+                    await save_raw("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png");
+                }else{
+                 //console.log("item ./images/raw/"+id+".png already scraped, skipping")   
+                 
+                fs.access("./images/rembg/"+ id + ".png", fs.F_OK, async (err) => {
+                    if (err) {
+                        await save_rembg("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png");
+                    }else{
+                        //console.log("item ./images/rembg/"+id+".png already scraped, skipping")   
+                    }                
+                    })
+                }                
+              })
+            //console.log("saving item... "+link);
             console.log('item ' + id + ' on page ' + i);
-             let path_image = await rembg("http://img.bricklink.com/ItemImage/PL/" + id + ".png",id,"png",upload);
+             let path_image = 
             await sleep(5000);
         }
     });
