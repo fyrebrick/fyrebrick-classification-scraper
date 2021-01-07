@@ -1,4 +1,4 @@
-From node:12.20.0
+From node:12.20.1
 WORKDIR /usr/src/app
 COPY package*.json /usr/src/app/
 RUN npm install
