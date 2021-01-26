@@ -13,13 +13,11 @@ let match_ip = "http://match:8888/";
 let rembg_ip = "http://localhost:5000/";
 let links;
 let base_uri = "https://www.bricklink.com";
-//let scrape_cron = every_5_minutes;
+const 
 console.log('starting up!');
 
 console.log("ready to start scraping...");
-//schedule.scheduleJob(every, function(){
     startUp();
-//});
 function startUp() {
     sleep(2/*00*/ * 1000).then(async () => {
         links = [];
