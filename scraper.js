@@ -14,7 +14,7 @@ const BRICKLINK_XP_URL = "https://www.bricklink.com/r3/catalog/parts/Minifig_Hea
 const BRICKOWL_URL = "https://www.brickowl.com/catalog/";
 const PEERON_URL = " http://www.peeron.com/inv/parts/";
 const REBRICKABLE_IMAGE_NIL = "https://rebrickable.com/static/img/nil.png"
-
+let amountDone = 1;
 let throttle = new Throttle({
     active: true,     // set false to pause queue
     rate: 1,          // how many requests can be sent every `ratePer`
@@ -27,12 +27,13 @@ let browser;
     async()=>{
         browser = await puppeteer.launch({headless:false});
         await acceptBricklinkCookies();
-        doPage();
+        //const hrefs = await findBricklinkPages("https://www.bricklink.com/catalogList.asp?pg=1&catString=238&catType=P");
+        //console.log(hrefs);
+        await doRebrickablePage();
     }
     )()
 
-const doPage = async (rebrickable_url=REBRICKABLE_API_URL) => {
-    amountDone = 1;
+const doRebrickablePage = async (rebrickable_url=REBRICKABLE_API_URL) => {
     await superagent.get(rebrickable_url)
     .use(throttle.plugin())
     .set('Accept', 'application/json')
@@ -42,7 +43,11 @@ const doPage = async (rebrickable_url=REBRICKABLE_API_URL) => {
             res.body.results.forEach(async(result)=>{
                 //! save rebrickable image
                 if(typeof result.part_img_url === "string"){
-                    saveImage(result.part_img_url,result.part_num,"jpg");
+                    if(result.external_ids['BrickLink']){
+                        saveImage(result.part_img_url,result.external_ids['BrickLink'][0],"jpg");
+                    }else{
+                        console.log("No bricklink id: "+JSON.stringify(result.external_ids));
+                    }
                 }
                 //! save bricklink image
                 try{
@@ -50,7 +55,7 @@ const doPage = async (rebrickable_url=REBRICKABLE_API_URL) => {
                         setTimeout(async()=>{
                             try{
                                 (await doBricklink(result.external_ids['BrickLink'][0])).forEach(async image=>{
-                                    await saveImage(image,result.part_num,"png");
+                                    await saveImage(image,result.external_ids['BrickLink'][0],"png");
                                 });
                             }catch(e){console.log(e.message)};
                         }, 4000*amountDone);
@@ -58,21 +63,21 @@ const doPage = async (rebrickable_url=REBRICKABLE_API_URL) => {
                     }
                     if(result.external_ids['BrickLink']){
                         setTimeout(async()=>{
-                            try{saveImage(await doBricklinkXP(result.external_ids['BrickLink'][0]),result.part_num,"png");
+                            try{saveImage(await doBricklinkXP(result.external_ids['BrickLink'][0]),result.external_ids['BrickLink'][0],"png");
                             }catch(e){console.log(e.message)};
                         }, 4000*amountDone); 
                         amountDone++;
                     }
                     if(result.external_ids['BrickOwl']){
                         setTimeout(async()=>{
-                            try{saveImage(await doBrickOwl(result.external_ids['BrickOwl'][0]),result.part_num,"jpg");
+                            try{saveImage(await doBrickOwl(result.external_ids['BrickOwl'][0]),result.external_ids['BrickLink'][0],"jpg");
                             }catch(e){console.log(e.message)};
-                        }, 4000*amountDone); 
+                        }, 4000*amountDone);
                         amountDone++;
                     }
                     if(result.external_ids['Peeron']){
                         setTimeout(async()=>{
-                            try{saveImage(await doPeeron(result.external_ids['Peeron'][0]),result.part_num,"jpg");
+                            try{saveImage(await doPeeron(result.external_ids['Peeron'][0]),result.external_ids['BrickLink'][0]  ,"jpg");
                             }catch(e){console.log(e.message)};
                         }, 4000*amountDone); 
                         amountDone++;
@@ -93,6 +98,45 @@ const doPage = async (rebrickable_url=REBRICKABLE_API_URL) => {
     });
 }
 
+const findBricklinkPages = async (url)=>{
+    //1. go to page
+    const page = await browser.newPage();
+    await page.goto(url);
+    await page.setDefaultNavigationTimeout(0);
+    const hrefSelector = "#ItemEditForm > table:nth-child(1) > tbody > tr > td > table > tbody > tr > td:nth-child(2) > font > a";
+    const nextSelector = "#ItemEditForm > table:nth-child(2) > tbody > tr > td > font > div > a:nth-child(11)"
+    //2. read all hrefs of the link. 
+    const hrefs = await page.$$eval(hrefSelector,links => links.map(a => a.text));
+    //3. find the next page
+    let nextUrl="";
+    try{
+    nextUrl = await page.$eval(nextSelector,a => a.href);
+    }catch(e){console.log(e.message,nextUrl,url)}
+    //4. forEach href found open tab and doBricklink()
+    // hrefs.forEach(link=>{
+    //     setTimeout(async()=>{
+    //         try{
+    //             (await doBricklink(link)).forEach(async image=>{
+    //                 await saveImage(image,link,"png");
+    //             });
+    //         }catch(e){console.log(e.message)};
+    //     }, 4000*amountDone);
+    //     amountDone++;
+    // })
+    //5. after all hrefs done, recursive with the next page as page variable
+    //  check if this url is the same as the nexturl. if so, stop recursive
+    if(url===nextUrl){
+        console.log('All page done for Bricklink scraping');
+        return hrefs;
+    }else{
+        // setTimeout(()=>{
+        //     page.close();
+        return hrefs.concat(findBricklinkPages(nextUrl));
+        // },200000); //310sec
+    }
+    
+}
+
 const saveImage = (image_url,part_num,filetype) =>{
 try{    
     superagent
@@ -105,7 +149,7 @@ try{
                 let buffer = new Buffer.from(res.body);
                 let path = 'images/'+part_num+'/'+uuidv4()+'.'+filetype;
                 fs.writeFile(path, buffer,()=>{
-                    console.log(`saved image ${image_url}`);
+                    //console.log(`saved image ${image_url}`);
                 });
                 setTimeout(()=>{
                     if(filetype==="png"){
@@ -121,7 +165,7 @@ try{
                                     fs.unlinkSync(path)
                                 }
                             })
-                            console.log("successfully converted image "+path);
+                            //console.log("successfully converted image "+path);
                         }catch(e){
                             console.log("something happened with converting the png file to jpg");
                         }
