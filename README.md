@@ -15,3 +15,5 @@ This will run match, elasticsearch, rembg-docker and brickscraper.
 - match will upload the images finally
 
 This will be used to match and recognize lego pictures.
+
+(Use on your own terms)
