@@ -16,7 +16,7 @@
     "jimp": "^0.16.1",
     "node-schedule": "^2.0.0",
     "smartcrop": "^2.0.3",
-    "superagent": "^6.1.0",
+    "superagent": "^8.0.0",
     "superagent-throttle": "^1.0.1",
     "uuid": "^8.3.2"
   }
