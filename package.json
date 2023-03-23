@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "cheerio": "^1.0.0-rc.3",
-    "jimp": "^0.16.1",
+    "jimp": "^0.22.0",
     "node-schedule": "^2.0.0",
     "smartcrop": "^2.0.3",
     "superagent": "^6.1.0",
